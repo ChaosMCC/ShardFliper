@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ShardFliper — Hypixel Skyblock</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div class="title-row">
+    <h1>ShardFliper</h1>
+    <div class="status"><span id="status">Starting…</span></div>
+  </div>
+
+  <div class="controls">
+    <button id="refresh">Refresh Bazaar</button>
+    <button id="update-recipes" title="Fetch the latest fusion data from skyshards.com's GitHub">Update Recipes</button>
+    <label>Tax <input type="number" id="tax" value="1.25" step="0.05" min="0" max="5"> %</label>
+    <label>Min margin <input type="number" id="min-margin" value="0"></label>
+    <label>Min vol/wk <input type="number" id="min-volume" value="0"></label>
+    <label>Top <input type="number" id="top-n" value="200" min="10" max="2000"></label>
+    <label><input type="checkbox" id="best-per-output" checked> Best recipe per output</label>
+    <label><input type="checkbox" id="hide-loss" checked> Hide losses</label>
+    <label><input type="checkbox" id="auto-refresh" checked> Auto-refresh 60s</label>
+  </div>
+
+  <div class="controls">
+    <label>Filter rarity:</label>
+    <label><input type="checkbox" class="rarity" value="common" checked> Common</label>
+    <label><input type="checkbox" class="rarity" value="uncommon" checked> Uncommon</label>
+    <label><input type="checkbox" class="rarity" value="rare" checked> Rare</label>
+    <label><input type="checkbox" class="rarity" value="epic" checked> Epic</label>
+    <label><input type="checkbox" class="rarity" value="legendary" checked> Legendary</label>
+    <label>Search <input type="text" id="search" placeholder="output name…"></label>
+  </div>
+</header>
+
+<main>
+  <table id="results">
+    <thead>
+      <tr>
+        <th data-key="output_name">Output</th>
+        <th data-key="rarity">Rarity</th>
+        <th>Recipe</th>
+        <th data-key="insta_cost">Insta Cost</th>
+        <th data-key="insta_rev">Insta Revenue</th>
+        <th data-key="insta_margin" class="sorted">Insta Margin ▼</th>
+        <th data-key="insta_roi">Insta ROI</th>
+        <th data-key="order_cost">Order Cost</th>
+        <th data-key="order_rev">Order Revenue</th>
+        <th data-key="order_margin">Order Margin</th>
+        <th data-key="order_roi">Order ROI</th>
+        <th data-key="week_vol">Output Vol/wk</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <p id="empty-note" class="empty hidden">Loading…</p>
+  <p id="row-count" class="empty"></p>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+* { box-sizing: border-box; }
+body {
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+  background: #0e1116;
+  color: #e6edf3;
+  margin: 0;
+  padding: 16px;
+}
+h1 { margin: 0; font-size: 1.4rem; }
+header { border-bottom: 1px solid #30363d; padding-bottom: 12px; margin-bottom: 12px; }
+.title-row { display: flex; justify-content: space-between; align-items: center; }
+.status { font-size: 0.85rem; color: #9da7b3; }
+.status .ok { color: #56d364; }
+.status .err { color: #f85149; }
+
+.controls {
+  display: flex; flex-wrap: wrap; gap: 10px 16px;
+  align-items: center; margin-top: 10px;
+}
+.controls label { font-size: 0.85rem; display: flex; align-items: center; gap: 6px; }
+input[type="number"], input[type="text"] {
+  background: #161b22; color: #e6edf3;
+  border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 8px; font: inherit;
+}
+input[type="number"] { width: 80px; }
+input[type="text"] { width: 100%; }
+button {
+  background: #21262d; color: #e6edf3; border: 1px solid #30363d;
+  border-radius: 4px; padding: 5px 12px; cursor: pointer; font: inherit;
+}
+button:hover { background: #30363d; }
+
+.panel { margin-top: 12px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; }
+.panel summary { cursor: pointer; font-size: 0.9rem; }
+.recipe-controls .row { display: flex; gap: 8px; margin: 8px 0; align-items: center; flex-wrap: wrap; }
+.recipe-controls .row > input[type="text"] { flex: 1; min-width: 260px; }
+.file-label { font-size: 0.85rem; }
+.hint { font-size: 0.8rem; color: #9da7b3; margin: 4px 0; }
+code { background: #0e1116; padding: 1px 5px; border-radius: 3px; font-size: 0.85em; }
+
+#shard-list {
+  max-height: 260px; overflow: auto; margin-top: 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 4px 12px;
+  font-size: 0.8rem; font-family: ui-monospace, Consolas, monospace;
+}
+#shard-list .item { padding: 2px 4px; border-bottom: 1px solid #21262d; cursor: pointer; }
+#shard-list .item:hover { background: #21262d; }
+#shard-list .item .px { color: #9da7b3; float: right; }
+
+table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+th, td { padding: 6px 8px; text-align: right; border-bottom: 1px solid #21262d; white-space: nowrap; }
+th:nth-child(1), th:nth-child(2), td:nth-child(1), td:nth-child(2) { text-align: left; }
+th { background: #161b22; cursor: pointer; user-select: none; position: sticky; top: 0; }
+th:hover { background: #21262d; }
+th.sorted { color: #58a6ff; }
+tbody tr:hover { background: #161b22; }
+.pos { color: #56d364; }
+.neg { color: #f85149; }
+.empty { color: #9da7b3; text-align: center; padding: 12px; font-size: 0.85rem; }
+.empty.hidden { display: none; }
+.rarity-common    { color: #b3b3b3; }
+.rarity-uncommon  { color: #56d364; }
+.rarity-rare      { color: #58a6ff; }
+.rarity-epic      { color: #c678dd; }
+.rarity-legendary { color: #e3b341; }
