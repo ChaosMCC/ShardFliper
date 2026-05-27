@@ -64,3 +64,15 @@ tbody tr:hover { background: #161b22; }
 .rarity-rare      { color: #58a6ff; }
 .rarity-epic      { color: #c678dd; }
 .rarity-legendary { color: #e3b341; }
+
+td.steps { text-align: center; font-weight: 600; }
+td.recipe-cell { white-space: normal; font-size: 0.78rem; max-width: 480px; line-height: 1.35; }
+td.recipe-cell .step-final { color: #e6edf3; }
+td.recipe-cell .step-sub   { color: #8b949e; padding-left: 14px; position: relative; }
+td.recipe-cell .step-sub::before { content: "↳"; position: absolute; left: 2px; color: #6e7681; }
+td.recipe-cell .leaves     { color: #58a6ff; margin-top: 4px; font-size: 0.75rem; }
+select {
+  background: #161b22; color: #e6edf3;
+  border: 1px solid #30363d; border-radius: 4px;
+  padding: 4px 8px; font: inherit;
+}

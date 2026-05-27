@@ -8,7 +8,7 @@ const RARITY_ORDER = { common: 0, uncommon: 1, rare: 2, epic: 3, legendary: 4 };
 
 const state = {
   fusionData: null,
-  flatRecipes: [],
+  recipeIdx: null,
   bazaar: {},
   lastUpdated: null,
   sortKey: 'insta_margin',
@@ -41,32 +41,31 @@ async function loadFusionData(url) {
   const data = await fetchJson(url);
   if (!data.recipes || !data.shards) throw new Error('Invalid fusion-data.json');
   state.fusionData = data;
-  state.flatRecipes = buildFlatRecipes(data);
+  state.recipeIdx = buildRecipeIndex(data);
+  const recipeCount = Object.values(state.recipeIdx).reduce((s, a) => s + a.length, 0);
   setStatus(
-    `Loaded ${state.flatRecipes.length} unique recipes across ${Object.keys(data.shards).length} shards`,
+    `Loaded ${recipeCount.toLocaleString()} unique recipes across ${Object.keys(data.shards).length} shards`,
     'ok'
   );
 }
 
-function buildFlatRecipes(fusionData) {
-  const flat = [];
-  const seen = new Set();
-  for (const [outputKey, qtyMap] of Object.entries(fusionData.recipes)) {
-    for (const [qtyStr, pairs] of Object.entries(qtyMap)) {
-      const outputQty = parseInt(qtyStr, 10);
-      for (const pair of pairs) {
-        if (!Array.isArray(pair) || pair.length !== 2) continue;
-        const [a, b] = pair;
-        const lo = a < b ? a : b;
-        const hi = a < b ? b : a;
-        const key = `${outputKey}|${lo}|${hi}|${outputQty}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        flat.push({ outputKey, outputQty, inputKeys: [a, b] });
+function buildRecipeIndex(fusionData) {
+  const idx = {};
+  for (const [outKey, qtyMap] of Object.entries(fusionData.recipes)) {
+    const list = idx[outKey] = [];
+    const seen = new Set();
+    for (const [qStr, pairs] of Object.entries(qtyMap)) {
+      const oq = parseInt(qStr, 10);
+      for (const [a, b] of pairs) {
+        if (!a || !b) continue;
+        const k = a < b ? `${a}|${b}|${oq}` : `${b}|${a}|${oq}`;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        list.push({ inputs: [a, b], outputQty: oq });
       }
     }
   }
-  return flat;
+  return idx;
 }
 
 async function fetchBazaar() {
@@ -81,18 +80,117 @@ async function fetchBazaar() {
   );
 }
 
-function priceOf(internalId) {
-  const p = state.bazaar[internalId];
-  if (!p || !p.quick_status) return null;
-  const q = p.quick_status;
-  return {
-    instaBuy: q.buyPrice,
-    instaSell: q.sellPrice,
-    orderBuy: q.sellPrice + 0.1,
-    orderSell: q.buyPrice - 0.1,
-    weekVol: q.sellMovingWeek,
-  };
+function buyPriceFor(internalId, mode) {
+  const p = state.bazaar[internalId]?.quick_status;
+  if (!p) return null;
+  return mode === 'insta' ? p.buyPrice : p.sellPrice + 0.1;
 }
+
+function sellPriceFor(internalId, mode) {
+  const p = state.bazaar[internalId]?.quick_status;
+  if (!p) return null;
+  return mode === 'insta' ? p.sellPrice : p.buyPrice - 0.1;
+}
+
+// ---- DP: best chain to make a shard ----
+
+function bestFusion(shardKey, depth, mode, cache) {
+  if (depth <= 0) return null;
+  const recipes = state.recipeIdx[shardKey];
+  if (!recipes || recipes.length === 0) return null;
+  const shards = state.fusionData.shards;
+  let best = null;
+  for (const r of recipes) {
+    const a = shards[r.inputs[0]];
+    const b = shards[r.inputs[1]];
+    if (!a || !b) continue;
+    const cA = minCost(r.inputs[0], depth - 1, mode, cache);
+    const cB = minCost(r.inputs[1], depth - 1, mode, cache);
+    if (!cA || !cB) continue;
+    const cost = (a.fuse_amount * cA.costPerUnit + b.fuse_amount * cB.costPerUnit) / r.outputQty;
+    if (best === null || cost < best.costPerUnit) {
+      best = { shardKey, costPerUnit: cost, source: 'fusion', recipe: r, children: [cA, cB] };
+    }
+  }
+  return best;
+}
+
+function minCost(shardKey, depth, mode, cache) {
+  const memoKey = `${shardKey}|${depth}|${mode}`;
+  if (cache.has(memoKey)) return cache.get(memoKey);
+  const shard = state.fusionData.shards[shardKey];
+  if (!shard) { cache.set(memoKey, null); return null; }
+
+  let best = null;
+  const bp = buyPriceFor(shard.internal_id, mode);
+  if (bp != null && bp > 0) best = { shardKey, costPerUnit: bp, source: 'bazaar' };
+
+  if (depth > 0) {
+    const fusion = bestFusion(shardKey, depth, mode, cache);
+    if (fusion && (!best || fusion.costPerUnit < best.costPerUnit)) best = fusion;
+  }
+
+  cache.set(memoKey, best);
+  return best;
+}
+
+function chainDepth(node) {
+  if (!node || node.source !== 'fusion') return 0;
+  return 1 + Math.max(chainDepth(node.children[0]), chainDepth(node.children[1]));
+}
+
+function chainSteps(node, shards) {
+  // Returns steps in leaves-first order: every intermediate fusion, then the root.
+  const steps = [];
+  function walk(n) {
+    if (!n || n.source !== 'fusion') return;
+    walk(n.children[0]);
+    walk(n.children[1]);
+    const a = shards[n.recipe.inputs[0]];
+    const b = shards[n.recipe.inputs[1]];
+    steps.push({
+      aName: a.name, aQty: a.fuse_amount,
+      bName: b.name, bQty: b.fuse_amount,
+      outName: shards[n.shardKey].name, outQty: n.recipe.outputQty,
+    });
+  }
+  walk(node);
+  return steps;
+}
+
+function collectLeaves(node, shards) {
+  // Aggregated bazaar-bought shards needed for 1 execution of the final fusion.
+  const leaves = new Map();
+  function walk(n, units) {
+    if (n.source !== 'fusion') {
+      const name = shards[n.shardKey].name;
+      leaves.set(name, (leaves.get(name) || 0) + units);
+      return;
+    }
+    const fusions = units / n.recipe.outputQty;
+    const a = shards[n.recipe.inputs[0]];
+    const b = shards[n.recipe.inputs[1]];
+    walk(n.children[0], fusions * a.fuse_amount);
+    walk(n.children[1], fusions * b.fuse_amount);
+  }
+  walk(node, node.recipe.outputQty);
+  return leaves;
+}
+
+function recostChain(node, mode, shards) {
+  // Re-evaluate the same chain structure under a different price mode.
+  if (node.source !== 'fusion') {
+    return buyPriceFor(shards[node.shardKey].internal_id, mode);
+  }
+  const a = shards[node.recipe.inputs[0]];
+  const b = shards[node.recipe.inputs[1]];
+  const cA = recostChain(node.children[0], mode, shards);
+  const cB = recostChain(node.children[1], mode, shards);
+  if (cA == null || cB == null) return null;
+  return (a.fuse_amount * cA + b.fuse_amount * cB) / node.recipe.outputQty;
+}
+
+// ---- formatting ----
 
 function fmt(n) {
   if (n === undefined || n === null || isNaN(n)) return '-';
@@ -107,9 +205,16 @@ function fmtPct(n) {
   return (n * 100).toFixed(1) + '%';
 }
 
-function escapeHtml(s) {
-  return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function fmtQty(n) {
+  if (Math.abs(n - Math.round(n)) < 1e-6) return Math.round(n).toString();
+  return n.toFixed(1);
 }
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---- main calculation + render ----
 
 function calculate() {
   if (!state.fusionData || !Object.keys(state.bazaar).length) {
@@ -121,36 +226,37 @@ function calculate() {
   const minVol = parseFloat($('min-volume').value) || 0;
   const topN = parseInt($('top-n').value, 10) || 200;
   const hideLoss = $('hide-loss').checked;
-  const bestPerOutput = $('best-per-output').checked;
+  const maxDepth = parseInt($('max-depth').value, 10) || 1;
+  const optMode = $('opt-mode').value;
   const allowedRarities = new Set(
     Array.from(document.querySelectorAll('.rarity:checked')).map((el) => el.value)
   );
   const search = ($('search').value || '').trim().toLowerCase();
 
   const shards = state.fusionData.shards;
+  const cache = new Map();
   const rows = [];
 
-  for (const rec of state.flatRecipes) {
-    const outShard = shards[rec.outputKey];
-    if (!outShard) continue;
-    if (!allowedRarities.has(outShard.rarity)) continue;
-    if (search && !outShard.name.toLowerCase().includes(search)) continue;
+  for (const [shardKey, shard] of Object.entries(shards)) {
+    if (!allowedRarities.has(shard.rarity)) continue;
+    if (search && !shard.name.toLowerCase().includes(search)) continue;
 
-    const outPrice = priceOf(outShard.internal_id);
-    if (!outPrice) continue;
-    if (outPrice.weekVol < minVol) continue;
+    const outPx = state.bazaar[shard.internal_id]?.quick_status;
+    if (!outPx) continue;
+    if (outPx.sellMovingWeek < minVol) continue;
 
-    const inA = shards[rec.inputKeys[0]];
-    const inB = shards[rec.inputKeys[1]];
-    if (!inA || !inB) continue;
-    const pA = priceOf(inA.internal_id);
-    const pB = priceOf(inB.internal_id);
-    if (!pA || !pB) continue;
+    const chain = bestFusion(shardKey, maxDepth, optMode, cache);
+    if (!chain) continue;
 
-    const instaCost = pA.instaBuy * inA.fuse_amount + pB.instaBuy * inB.fuse_amount;
-    const orderCost = pA.orderBuy * inA.fuse_amount + pB.orderBuy * inB.fuse_amount;
-    const instaRev = outPrice.instaSell * rec.outputQty * (1 - tax);
-    const orderRev = outPrice.orderSell * rec.outputQty * (1 - tax);
+    const outQty = chain.recipe.outputQty;
+    const instaCostPerUnit = recostChain(chain, 'insta', shards);
+    const orderCostPerUnit = recostChain(chain, 'order', shards);
+    if (instaCostPerUnit == null || orderCostPerUnit == null) continue;
+
+    const instaCost = instaCostPerUnit * outQty;
+    const orderCost = orderCostPerUnit * outQty;
+    const instaRev = outPx.sellPrice * outQty * (1 - tax);
+    const orderRev = (outPx.buyPrice - 0.1) * outQty * (1 - tax);
     const instaMargin = instaRev - instaCost;
     const orderMargin = orderRev - orderCost;
     const instaRoi = instaCost > 0 ? instaMargin / instaCost : 0;
@@ -160,11 +266,13 @@ function calculate() {
     if (Math.max(instaMargin, orderMargin) < minMargin) continue;
 
     rows.push({
-      outputKey: rec.outputKey,
-      output_name: outShard.name,
-      output_qty: rec.outputQty,
-      rarity: outShard.rarity,
-      recipe: `${inA.fuse_amount}× ${inA.name}  +  ${inB.fuse_amount}× ${inB.name}`,
+      outputKey: shardKey,
+      output_name: shard.name,
+      output_qty: outQty,
+      rarity: shard.rarity,
+      steps: chainDepth(chain),
+      step_list: chainSteps(chain, shards),
+      leaves: collectLeaves(chain, shards),
       insta_cost: instaCost,
       insta_rev: instaRev,
       insta_margin: instaMargin,
@@ -173,36 +281,20 @@ function calculate() {
       order_rev: orderRev,
       order_margin: orderMargin,
       order_roi: orderRoi,
-      week_vol: outPrice.weekVol,
+      week_vol: outPx.sellMovingWeek,
     });
   }
 
-  let displayRows = rows;
-  if (bestPerOutput) {
-    const numericSort = state.sortKey !== 'output_name' && state.sortKey !== 'rarity';
-    const metric = numericSort ? state.sortKey : 'insta_margin';
-    const wantHigh = numericSort ? state.sortDir === -1 : true;
-    const best = new Map();
-    for (const r of rows) {
-      const cur = best.get(r.outputKey);
-      if (!cur || (wantHigh ? r[metric] > cur[metric] : r[metric] < cur[metric])) {
-        best.set(r.outputKey, r);
-      }
-    }
-    displayRows = Array.from(best.values());
-  }
-
   const k = state.sortKey;
-  displayRows.sort((a, b) => {
+  rows.sort((a, b) => {
     let av = a[k], bv = b[k];
     if (k === 'rarity') { av = RARITY_ORDER[av]; bv = RARITY_ORDER[bv]; }
     if (typeof av === 'string') return av.localeCompare(bv) * state.sortDir;
     return (av - bv) * state.sortDir;
   });
 
-  const total = displayRows.length;
-  displayRows = displayRows.slice(0, topN);
-  render(displayRows, total);
+  const total = rows.length;
+  render(rows.slice(0, topN), total);
 }
 
 function render(rows, total = 0) {
@@ -230,11 +322,28 @@ function render(rows, total = 0) {
 
   const parts = [];
   for (const r of rows) {
+    // Steps from leaves-first to root; render root first (most important), then sub-steps.
+    const stepsHtml = r.step_list
+      .map((s, i) => {
+        const cls = i === r.step_list.length - 1 ? 'step-final' : 'step-sub';
+        return `<div class="${cls}">${s.aQty}× ${escapeHtml(s.aName)} + ${s.bQty}× ${escapeHtml(s.bName)} → ${s.outQty}× ${escapeHtml(s.outName)}</div>`;
+      })
+      .reverse()
+      .join('');
+    let leavesHtml = '';
+    if (r.steps > 1) {
+      const leavesText = Array.from(r.leaves.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, qty]) => `${fmtQty(qty)}× ${escapeHtml(name)}`)
+        .join(' + ');
+      leavesHtml = `<div class="leaves">Buy: ${leavesText}</div>`;
+    }
     parts.push(
       '<tr>',
       `<td>${r.output_qty}× ${escapeHtml(r.output_name)}</td>`,
       `<td class="rarity-${r.rarity}">${r.rarity}</td>`,
-      `<td>${escapeHtml(r.recipe)}</td>`,
+      `<td class="steps">${r.steps}</td>`,
+      `<td class="recipe-cell">${stepsHtml}${leavesHtml}</td>`,
       `<td>${fmt(r.insta_cost)}</td>`,
       `<td>${fmt(r.insta_rev)}</td>`,
       `<td class="${r.insta_margin >= 0 ? 'pos' : 'neg'}">${fmt(r.insta_margin)}</td>`,
@@ -249,9 +358,11 @@ function render(rows, total = 0) {
   }
   tbody.innerHTML = parts.join('');
   rowCount.textContent = total > rows.length
-    ? `Showing top ${rows.length} of ${total.toLocaleString()} matching recipes`
-    : `Showing ${rows.length} recipes`;
+    ? `Showing top ${rows.length} of ${total.toLocaleString()} matching outputs`
+    : `Showing ${rows.length} outputs`;
 }
+
+// ---- event handlers ----
 
 document.querySelectorAll('#results th').forEach((th) => {
   const key = th.dataset.key;
@@ -284,8 +395,10 @@ $('update-recipes').addEventListener('click', async () => {
   }
 });
 
-['tax', 'min-margin', 'min-volume', 'top-n', 'hide-loss', 'best-per-output', 'search']
+['tax', 'min-margin', 'min-volume', 'top-n', 'search']
   .forEach((id) => $(id).addEventListener('input', calculate));
+['hide-loss', 'max-depth', 'opt-mode']
+  .forEach((id) => $(id).addEventListener('change', calculate));
 document.querySelectorAll('.rarity').forEach((el) => el.addEventListener('change', calculate));
 
 $('auto-refresh').addEventListener('change', (e) => {

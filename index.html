@@ -15,11 +15,23 @@
   <div class="controls">
     <button id="refresh">Refresh Bazaar</button>
     <button id="update-recipes" title="Fetch the latest fusion data from skyshards.com's GitHub">Update Recipes</button>
+    <label>Max depth
+      <select id="max-depth">
+        <option value="1">1 step</option>
+        <option value="2" selected>2 steps</option>
+        <option value="3">3 steps</option>
+      </select>
+    </label>
+    <label>Strategy
+      <select id="opt-mode" title="Which bazaar strategy to optimize the fusion chain for">
+        <option value="insta">Insta-buy</option>
+        <option value="order" selected>Buy-order</option>
+      </select>
+    </label>
     <label>Tax <input type="number" id="tax" value="1.25" step="0.05" min="0" max="5"> %</label>
     <label>Min margin <input type="number" id="min-margin" value="0"></label>
     <label>Min vol/wk <input type="number" id="min-volume" value="0"></label>
     <label>Top <input type="number" id="top-n" value="200" min="10" max="2000"></label>
-    <label><input type="checkbox" id="best-per-output" checked> Best recipe per output</label>
     <label><input type="checkbox" id="hide-loss" checked> Hide losses</label>
     <label><input type="checkbox" id="auto-refresh" checked> Auto-refresh 60s</label>
   </div>
@@ -41,6 +53,7 @@
       <tr>
         <th data-key="output_name">Output</th>
         <th data-key="rarity">Rarity</th>
+        <th data-key="steps">Steps</th>
         <th>Recipe</th>
         <th data-key="insta_cost">Insta Cost</th>
         <th data-key="insta_rev">Insta Revenue</th>
